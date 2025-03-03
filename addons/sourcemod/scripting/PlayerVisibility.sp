@@ -2,7 +2,6 @@
 #include <sdkhooks>
 #include <sdktools>
 #include <dhooks>
-#include <LagReducer>
 #undef REQUIRE_PLUGIN
 #include <zombiereloaded>
 #define REQUIRE_PLUGIN
@@ -15,30 +14,45 @@ public Plugin myinfo =
 	name 			= "PlayerVisibility",
 	author 			= "BotoX, maxime1907",
 	description 	= "Fades players away when you get close to them.",
-	version 		= "1.3",
+	version 		= "1.4.0",
 	url 			= ""
 };
 
 // bool CBaseEntity::AcceptInput( const char *szInputName, CBaseEntity *pActivator, CBaseEntity *pCaller, variant_t Value, int outputID )
 Handle g_hAcceptInput;
 
+ConVar g_CVar_UpdateRate;
 ConVar g_CVar_MaxDistance;
 ConVar g_CVar_MinFactor;
 ConVar g_CVar_MinAlpha;
 ConVar g_CVar_MinPlayers;
 ConVar g_CVar_MinPlayersToEnable;
 
+bool g_bEnable = false;
 float g_fMaxDistance;
 float g_fMinFactor;
 float g_fMinAlpha;
 int g_iMinPlayers;
 int g_iMinPlayersToEnable;
+int g_iUpdateRate = 3;
 
-int g_Client_Alpha[MAXPLAYERS + 1] = {255, ...};
-bool g_Client_bEnabled[MAXPLAYERS + 1] = {false, ...};
-bool g_Client_bWait[MAXPLAYERS + 1] = {true, ...};
+enum struct PlayerData
+{
+	bool alive;
+	bool enabled;
+	bool bot;
+	int alpha;
 
-bool g_bEnable = false;
+	void Reset()
+	{
+		this.alive = false;
+		this.enabled = false;
+		this.bot = false;
+		this.alpha = 255;
+	}
+}
+
+PlayerData g_playerData[MAXPLAYERS+1];
 
 public void OnPluginStart()
 {
@@ -59,6 +73,10 @@ public void OnPluginStart()
 
 	CloseHandle(hGameConf);
 
+	g_CVar_UpdateRate = CreateConVar("sm_pvis_updaterate", "3", "Number of players to update per frame.", 0, true, 64.0);
+	g_iUpdateRate = g_CVar_UpdateRate.IntValue;
+	g_CVar_UpdateRate.AddChangeHook(OnConVarChanged);
+
 	g_CVar_MaxDistance = CreateConVar("sm_pvis_maxdistance", "100.0", "Distance at which models stop fading.", 0, true, 0.0);
 	g_fMaxDistance = g_CVar_MaxDistance.FloatValue;
 	g_CVar_MaxDistance.AddChangeHook(OnConVarChanged);
@@ -75,31 +93,36 @@ public void OnPluginStart()
 	g_iMinPlayers = g_CVar_MinPlayers.IntValue;
 	g_CVar_MinPlayers.AddChangeHook(OnConVarChanged);
 
-	g_CVar_MinPlayersToEnable = CreateConVar("sm_pvis_minplayers_enable", "40", "Minimum players to enable this plugin.", 0, true, 0.0, true, 200.0);
+	g_CVar_MinPlayersToEnable = CreateConVar("sm_pvis_minplayers_enable", "40", "Minimum players to enable this plugin. [0 = Always enable || -1 = Plugin disable", 0, true, -1.0, true, 200.0);
 	g_iMinPlayersToEnable = g_CVar_MinPlayersToEnable.IntValue;
 	g_CVar_MinPlayersToEnable.AddChangeHook(OnConVarChanged);
 
 	AutoExecConfig(true);
 
 	HookEvent("player_spawn", Event_Spawn, EventHookMode_Post);
+	HookEvent("player_death", Event_PlayerDeath, EventHookMode_Post);
 
 	for (int client = 1; client <= MaxClients; client++)
 	{
 		if (IsClientInGame(client))
 			OnClientPutInServer(client);
+
+		g_playerData[client].alive = IsPlayerAlive(client);
 	}
 }
 
 public void OnPluginEnd()
 {
 	ResetTransparency();
-
-	UnhookEvent("player_spawn", Event_Spawn, EventHookMode_Post);
+	// Hooks are automatically removed when the plugin is unloaded
 }
 
 public void OnConVarChanged(ConVar convar, const char[] oldValue, const char[] newValue)
 {
-	if (convar == g_CVar_MaxDistance)
+	if (convar == g_CVar_UpdateRate)
+		g_iUpdateRate = g_CVar_UpdateRate.IntValue;
+
+	else if (convar == g_CVar_MaxDistance)
 		g_fMaxDistance = g_CVar_MaxDistance.FloatValue;
 
 	else if (convar == g_CVar_MinFactor)
@@ -122,12 +145,18 @@ public void OnClientPutInServer(int client)
 {
 	CheckClientCount();
 
-	g_Client_Alpha[client] = 255;
-	g_Client_bEnabled[client] = true;
-	g_Client_bWait[client] = true;
+	if (IsFakeClient(client))
+		g_playerData[client].bot = true;
 
-	SDKHook(client, SDKHook_PostThinkPost, OnPostThinkPost);
+	g_playerData[client].alpha = 255;
+	g_playerData[client].enabled = true;
+
 	DHookEntity(g_hAcceptInput, false, client);
+}
+
+public void OnClientDisconnect(int client)
+{
+	g_playerData[client].Reset();
 }
 
 // bool CBaseEntity::AcceptInput( const char *szInputName, CBaseEntity *pActivator, CBaseEntity *pCaller, variant_t Value, int outputID )
@@ -141,7 +170,7 @@ public MRESReturn AcceptInput(int pThis, Handle hReturn, Handle hParams)
 	if(client < 1 || client > MAXPLAYERS)
 		return MRES_Ignored;
 
-	if(!g_Client_bEnabled[client])
+	if(!g_playerData[client].enabled)
 		return MRES_Ignored;
 
 	char szInputName[32];
@@ -191,11 +220,11 @@ public MRESReturn AcceptInput(int pThis, Handle hReturn, Handle hParams)
 			if(renderMode == RENDER_ENVIRONMENTAL)
 			{
 				ToolsSetEntityAlpha(client, 255);
-				g_Client_Alpha[client] = 255;
-				g_Client_bEnabled[client] = false;
+				g_playerData[client].alpha = 255;
+				g_playerData[client].enabled = false;
 			}
 			else
-				g_Client_bEnabled[client] = true;
+				g_playerData[client].enabled = true;
 		}
 		else if(StrEqual(sValue[aArgs[0]], "renderfx", false))
 		{
@@ -203,11 +232,11 @@ public MRESReturn AcceptInput(int pThis, Handle hReturn, Handle hParams)
 			if(renderFx != RENDERFX_NONE)
 			{
 				ToolsSetEntityAlpha(client, 255);
-				g_Client_Alpha[client] = 255;
-				g_Client_bEnabled[client] = false;
+				g_playerData[client].alpha = 255;
+				g_playerData[client].enabled = false;
 			}
 			else
-				g_Client_bEnabled[client] = true;
+				g_playerData[client].enabled = true;
 		}
 	}
 	else if(StrEqual(szInputName, "alpha", false))
@@ -216,12 +245,12 @@ public MRESReturn AcceptInput(int pThis, Handle hReturn, Handle hParams)
 		if(iAlpha == 0)
 		{
 			ToolsSetEntityAlpha(client, 255);
-			g_Client_Alpha[client] = 255;
-			g_Client_bEnabled[client] = false;
+			g_playerData[client].alpha = 255;
+			g_playerData[client].enabled = false;
 		}
 		else
 		{
-			g_Client_bEnabled[client] = true;
+			g_playerData[client].enabled = true;
 			return MRES_Supercede;
 		}
 	}
@@ -231,11 +260,22 @@ public MRESReturn AcceptInput(int pThis, Handle hReturn, Handle hParams)
 
 public void Event_Spawn(Event event, const char[] name, bool dontBroadcast)
 {
-	int client = GetClientOfUserId(GetEventInt(event, "userid"));
-	if(!client)
+	int client = GetClientOfUserId(event.GetInt("userid"));
+	if (!client)
 		return;
 
+	g_playerData[client].alive = true;
+
 	CreateTimer(1.0, Timer_SpawnPost, client, TIMER_FLAG_NO_MAPCHANGE);
+}
+
+void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
+{
+	int client = GetClientOfUserId(event.GetInt("userid"));
+	if (!client)
+		return;
+
+	g_playerData[client].alive = false;
 }
 
 public Action Timer_SpawnPost(Handle timer, int client)
@@ -244,12 +284,11 @@ public Action Timer_SpawnPost(Handle timer, int client)
 		return Plugin_Stop;
 
 	ToolsSetEntityAlpha(client, 255);
-	g_Client_Alpha[client] = 255;
-	g_Client_bEnabled[client] = true;
-	g_Client_bWait[client] = true;
+	g_playerData[client].alpha = 255;
+	g_playerData[client].enabled = true;
 
 	if (ZR_IsClientZombie(client))
-		g_Client_bEnabled[client] = false;
+		g_playerData[client].enabled = false;
 
 	return Plugin_Stop;
 }
@@ -257,64 +296,81 @@ public Action Timer_SpawnPost(Handle timer, int client)
 public void ZR_OnClientInfected(int client, int attacker, bool motherInfect, bool respawnOverride, bool respawn)
 {
 	ToolsSetEntityAlpha(client, 255);
-	g_Client_Alpha[client] = 255;
-	g_Client_bEnabled[client] = false;
-	g_Client_bWait[client] = true;
+	g_playerData[client].alpha = 255;
+	g_playerData[client].enabled = false;
 }
 
 public void ZR_OnClientHumanPost(int client, bool respawn, bool protect)
 {
 	ToolsSetEntityAlpha(client, 255);
-	g_Client_Alpha[client] = 255;
-	g_Client_bEnabled[client] = true;
-	g_Client_bWait[client] = true;
+	g_playerData[client].alpha = 255;
+	g_playerData[client].enabled = true;
 }
 
-public void OnPostThinkPost(int client)
+public void OnGameFrame()
 {
-	if(!g_Client_bEnabled[client] || !g_bEnable || g_Client_bWait[client])
+	if (!g_bEnable)
 		return;
 
-	int PlayersInRange = 0;
-	float fAlpha = 255.0;
-	for(int i = 1; i <= MaxClients; i++)
+	static int client = 0;
+
+	// Batch process the clients to reduce server load
+	for (int i = 0; i < g_iUpdateRate; i++)
 	{
-		if(i == client || !g_Client_bEnabled[i] || !IsClientInGame(i) || !IsPlayerAlive(i))
+		// All players hide data updated, start from beginning again
+		if (client == MAXPLAYERS)
+			client = 0;
+
+		client++;
+
+		// Early skip for invalid clients
+		if (g_playerData[client].bot || !g_playerData[client].enabled)
 			continue;
 
+		int PlayersInRange = 0;
+		float fAlpha = 255.0;
+
+		// Get the position of the player
 		static float fVec1[3];
-		static float fVec2[3];
 		GetClientAbsOrigin(client, fVec1);
-		GetClientAbsOrigin(i, fVec2);
 
-		float fDistance = GetVectorDistance(fVec1, fVec2, false);
-		if(fDistance <= g_fMaxDistance)
+		for (int j = 1; j <= MaxClients; j++)
 		{
-			PlayersInRange++;
+			// Skips invalid clients, the client itself, disabled clients, and dead clients
+			if (!IsClientInGame(j) || j == client || !g_playerData[j].enabled || !g_playerData[j].alive)
+				continue;
 
-			float fFactor = fDistance / g_fMaxDistance;
-			if(fFactor < g_fMinFactor)
-				fFactor = g_fMinFactor;
+			// Get the position of the other player
+			static float fVec2[3];
+			GetClientAbsOrigin(j, fVec2);
 
-			fAlpha *= fFactor;
+			float fDistance = GetVectorDistance(fVec1, fVec2, false);
+			if(fDistance <= g_fMaxDistance)
+			{
+				PlayersInRange++;
+
+				float fFactor = fDistance / g_fMaxDistance;
+				if(fFactor < g_fMinFactor)
+					fFactor = g_fMinFactor;
+
+				fAlpha *= fFactor;
+			}
 		}
+
+		if(fAlpha < g_fMinAlpha)
+			fAlpha = g_fMinAlpha;
+
+		if(PlayersInRange < g_iMinPlayers)
+			fAlpha = 255.0;
+
+		int Alpha = RoundToNearest(fAlpha);
+
+		if(Alpha == g_playerData[client].alpha)
+			continue;
+
+		g_playerData[client].alpha = Alpha;
+		ToolsSetEntityAlpha(client, Alpha);
 	}
-
-	if(fAlpha < g_fMinAlpha)
-		fAlpha = g_fMinAlpha;
-
-	if(PlayersInRange < g_iMinPlayers)
-		fAlpha = 255.0;
-
-	int Alpha = RoundToNearest(fAlpha);
-
-	if(Alpha == g_Client_Alpha[client])
-		return;
-
-	g_Client_Alpha[client] = Alpha;
-	ToolsSetEntityAlpha(client, Alpha);
-
-	g_Client_bWait[client] = true;
 }
 
 stock void ToolsSetEntityAlpha(int client, int Alpha)
@@ -359,26 +415,33 @@ stock void ResetTransparency()
 {
 	for (int client = 1; client <= MaxClients; client++)
 	{
-		if (IsClientInGame(client) && g_Client_bEnabled[client])
+		if (IsClientInGame(client) && g_playerData[client].enabled)
 		{
 			ToolsSetEntityAlpha(client, 255);
-			g_Client_Alpha[client] = 255;
+			g_playerData[client].alpha = 255;
 		}
 	}
 }
 
 stock void CheckClientCount()
 {
-	if (GetClientCount(false) >= g_iMinPlayersToEnable)
-		g_bEnable = true;
-	else
+	// Handle the special cases
+	if (g_iMinPlayersToEnable == 0)
 	{
-		ResetTransparency();
-		g_bEnable = false;
+		g_bEnable = true;
+		return;
 	}
-}
+	else if (g_iMinPlayersToEnable == -1)
+	{
+		g_bEnable = false;
+		return;
+	}
 
-public void LagReducer_OnClientGameFrame(int iClient)
-{
-	g_Client_bWait[iClient] = false;
+	bool bShouldEnable = (GetClientCount(false) >= g_iMinPlayersToEnable);
+	// If the status changes from enabled to disabled, reset transparency
+	if (g_bEnable && !bShouldEnable)
+		ResetTransparency();
+
+	// Update the state
+	g_bEnable = bShouldEnable;
 }
