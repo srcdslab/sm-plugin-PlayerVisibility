@@ -14,7 +14,7 @@ public Plugin myinfo =
 	name 			= "PlayerVisibility",
 	author 			= "BotoX, maxime1907",
 	description 	= "Fades players away when you get close to them.",
-	version 		= "1.4.0",
+	version 		= "1.4.1",
 	url 			= ""
 };
 
@@ -38,14 +38,12 @@ int g_iUpdateRate = 3;
 
 enum struct PlayerData
 {
-	bool alive;
 	bool enabled;
 	bool bot;
 	int alpha;
 
 	void Reset()
 	{
-		this.alive = false;
 		this.enabled = false;
 		this.bot = false;
 		this.alpha = 255;
@@ -100,14 +98,13 @@ public void OnPluginStart()
 	AutoExecConfig(true);
 
 	HookEvent("player_spawn", Event_Spawn, EventHookMode_Post);
-	HookEvent("player_death", Event_PlayerDeath, EventHookMode_Post);
 
 	for (int client = 1; client <= MaxClients; client++)
 	{
-		if (IsClientInGame(client))
-			OnClientPutInServer(client);
+		if (!IsClientInGame(client))
+			continue;
 
-		g_playerData[client].alive = IsPlayerAlive(client);
+		OnClientPutInServer(client);
 	}
 }
 
@@ -264,18 +261,7 @@ public void Event_Spawn(Event event, const char[] name, bool dontBroadcast)
 	if (!client)
 		return;
 
-	g_playerData[client].alive = true;
-
 	CreateTimer(1.0, Timer_SpawnPost, client, TIMER_FLAG_NO_MAPCHANGE);
-}
-
-void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
-{
-	int client = GetClientOfUserId(event.GetInt("userid"));
-	if (!client)
-		return;
-
-	g_playerData[client].alive = false;
 }
 
 public Action Timer_SpawnPost(Handle timer, int client)
@@ -337,7 +323,7 @@ public void OnGameFrame()
 		for (int j = 1; j <= MaxClients; j++)
 		{
 			// Skips invalid clients, the client itself, disabled clients, and dead clients
-			if (!IsClientInGame(j) || j == client || !g_playerData[j].enabled || !g_playerData[j].alive)
+			if (!IsClientInGame(j) || j == client || !g_playerData[j].enabled || !IsPlayerAlive(j))
 				continue;
 
 			// Get the position of the other player
