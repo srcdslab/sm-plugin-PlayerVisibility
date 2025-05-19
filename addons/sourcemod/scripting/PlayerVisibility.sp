@@ -14,7 +14,7 @@ public Plugin myinfo =
 	name 			= "PlayerVisibility",
 	author 			= "BotoX, maxime1907",
 	description 	= "Fades players away when you get close to them.",
-	version 		= "1.4.1",
+	version 		= "1.4.2",
 	url 			= ""
 };
 
@@ -320,10 +320,16 @@ public void OnGameFrame()
 		static float fVec1[3];
 		GetClientAbsOrigin(client, fVec1);
 
+		int iTeam = GetClientTeam(client);
+
 		for (int j = 1; j <= MaxClients; j++)
 		{
 			// Skips invalid clients, the client itself, disabled clients, and dead clients
 			if (!IsClientInGame(j) || j == client || !g_playerData[j].enabled || !IsPlayerAlive(j))
+				continue;
+
+			// Skip if target is not in the same team
+			if (iTeam != GetClientTeam(j))
 				continue;
 
 			// Get the position of the other player
