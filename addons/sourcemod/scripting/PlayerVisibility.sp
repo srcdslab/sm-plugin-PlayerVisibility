@@ -14,7 +14,7 @@ public Plugin myinfo =
 	name 			= "PlayerVisibility",
 	author 			= "BotoX, maxime1907",
 	description 	= "Fades players away when you get close to them.",
-	version 		= "1.4.1",
+	version 		= "1.4.2",
 	url 			= ""
 };
 
@@ -27,8 +27,10 @@ ConVar g_CVar_MinFactor;
 ConVar g_CVar_MinAlpha;
 ConVar g_CVar_MinPlayers;
 ConVar g_CVar_MinPlayersToEnable;
+ConVar g_CVar_ApplyToOppositeTeam;
 
 bool g_bEnable = false;
+bool g_bApplyToOppositeTeam = false;
 float g_fMaxDistance;
 float g_fMinFactor;
 float g_fMinAlpha;
@@ -95,6 +97,10 @@ public void OnPluginStart()
 	g_iMinPlayersToEnable = g_CVar_MinPlayersToEnable.IntValue;
 	g_CVar_MinPlayersToEnable.AddChangeHook(OnConVarChanged);
 
+	g_CVar_ApplyToOppositeTeam = CreateConVar("sm_pvis_opposite_team", "0", "Apply visibility rules to players from opposite team. [0 = Disabled || 1 = Enabled]", 0, true, 0.0, true, 1.0);
+	g_bApplyToOppositeTeam = g_CVar_ApplyToOppositeTeam.BoolValue;
+	g_CVar_ApplyToOppositeTeam.AddChangeHook(OnConVarChanged);
+
 	AutoExecConfig(true);
 
 	HookEvent("player_spawn", Event_Spawn, EventHookMode_Post);
@@ -136,6 +142,9 @@ public void OnConVarChanged(ConVar convar, const char[] oldValue, const char[] n
 		g_iMinPlayersToEnable = g_CVar_MinPlayersToEnable.IntValue;
 		CheckClientCount();
 	}
+
+	else if (convar == g_CVar_ApplyToOppositeTeam)
+		g_bApplyToOppositeTeam = g_CVar_ApplyToOppositeTeam.BoolValue;
 }
 
 public void OnClientPutInServer(int client)
@@ -320,10 +329,16 @@ public void OnGameFrame()
 		static float fVec1[3];
 		GetClientAbsOrigin(client, fVec1);
 
+		int iTeam = GetClientTeam(client);
+
 		for (int j = 1; j <= MaxClients; j++)
 		{
 			// Skips invalid clients, the client itself, disabled clients, and dead clients
 			if (!IsClientInGame(j) || j == client || !g_playerData[j].enabled || !IsPlayerAlive(j))
+				continue;
+
+			// Skip if target is not in the same team based on the cvar
+			if (g_bApplyToOppositeTeam && iTeam != GetClientTeam(j))
 				continue;
 
 			// Get the position of the other player
