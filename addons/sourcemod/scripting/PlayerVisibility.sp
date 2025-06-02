@@ -14,7 +14,7 @@ public Plugin myinfo =
 	name 			= "PlayerVisibility",
 	author 			= "BotoX, maxime1907",
 	description 	= "Fades players away when you get close to them.",
-	version 		= "1.4.2",
+	version 		= "1.4.3",
 	url 			= ""
 };
 
@@ -319,7 +319,7 @@ public void OnGameFrame()
 		client++;
 
 		// Early skip for invalid clients
-		if (g_playerData[client].bot || !g_playerData[client].enabled)
+		if (g_playerData[client].bot || !g_playerData[client].enabled || !IsClientInGame(client))
 			continue;
 
 		int PlayersInRange = 0;
