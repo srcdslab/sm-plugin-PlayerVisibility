@@ -14,7 +14,7 @@ public Plugin myinfo =
 	name 			= "PlayerVisibility",
 	author 			= "BotoX, maxime1907",
 	description 	= "Fades players away when you get close to them.",
-	version 		= "1.4.3",
+	version 		= "1.4.4",
 	url 			= ""
 };
 
@@ -168,8 +168,7 @@ public void OnClientDisconnect(int client)
 // bool CBaseEntity::AcceptInput( const char *szInputName, CBaseEntity *pActivator, CBaseEntity *pCaller, variant_t Value, int outputID )
 public MRESReturn AcceptInput(int pThis, Handle hReturn, Handle hParams)
 {
-	// Should not happen?
-	if(DHookIsNullParam(hParams, 2))
+	if(DHookIsNullParam(hParams, 1) || DHookIsNullParam(hParams, 2) || DHookIsNullParam(hParams, 4))
 		return MRES_Ignored;
 
 	int client = EntRefToEntIndex(DHookGetParam(hParams, 2));
@@ -182,44 +181,42 @@ public MRESReturn AcceptInput(int pThis, Handle hReturn, Handle hParams)
 	char szInputName[32];
 	DHookGetParamString(hParams, 1, szInputName, sizeof(szInputName));
 
-	if(!StrEqual(szInputName, "addoutput", false))
-		return MRES_Ignored;
-
-	char sValue[128];
-	DHookGetParamObjectPtrString(hParams, 4, 0, ObjectValueType_String, sValue, sizeof(sValue));
-	int iValueLen = strlen(sValue);
-
-	int aArgs[4] = {0, ...};
-	int iArgs = 0;
-	bool bFound = false;
-
-	for(int i = 0; i < iValueLen; i++)
-	{
-		if(sValue[i] == ' ')
-		{
-			if(bFound)
-			{
-				sValue[i] = '\0';
-				bFound = false;
-
-				if(iArgs > sizeof(aArgs))
-					break;
-			}
-			continue;
-		}
-
-		if(!bFound)
-		{
-			if (iArgs < sizeof(aArgs))
-			{
-				aArgs[iArgs++] = i;
-				bFound = true;
-			}
-		}
-	}
-
+	// Handle different input types
 	if(StrEqual(szInputName, "addoutput", false))
 	{
+		char sValue[128];
+		DHookGetParamObjectPtrString(hParams, 4, 0, ObjectValueType_String, sValue, sizeof(sValue));
+		int iValueLen = strlen(sValue);
+
+		int aArgs[4] = {0, ...};
+		int iArgs = 0;
+		bool bFound = false;
+
+		for(int i = 0; i < iValueLen; i++)
+		{
+			if(sValue[i] == ' ')
+			{
+				if(bFound)
+				{
+					sValue[i] = '\0';
+					bFound = false;
+
+					if(iArgs >= sizeof(aArgs))
+						break;
+				}
+				continue;
+			}
+
+			if(!bFound)
+			{
+				if (iArgs < sizeof(aArgs))
+				{
+					aArgs[iArgs++] = i;
+					bFound = true;
+				}
+			}
+		}
+
 		if(StrEqual(sValue[aArgs[0]], "rendermode", false))
 		{
 			RenderMode renderMode = view_as<RenderMode>(StringToInt(sValue[aArgs[1]]) & 0xFF);
@@ -247,7 +244,11 @@ public MRESReturn AcceptInput(int pThis, Handle hReturn, Handle hParams)
 	}
 	else if(StrEqual(szInputName, "alpha", false))
 	{
-		int iAlpha = StringToInt(sValue[aArgs[0]]) & 0xFF;
+		char sValue[128];
+		DHookGetParamObjectPtrString(hParams, 4, 0, ObjectValueType_String, sValue, sizeof(sValue));
+
+		// Convert string to integer and mask to ensure alpha value is between 0-255
+		int iAlpha = StringToInt(sValue) & 0xFF;
 		if(iAlpha == 0)
 		{
 			ToolsSetEntityAlpha(client, 255);
@@ -338,7 +339,7 @@ public void OnGameFrame()
 				continue;
 
 			// Skip if target is not in the same team based on the cvar
-			if (g_bApplyToOppositeTeam && iTeam != GetClientTeam(j))
+			if (!g_bApplyToOppositeTeam && iTeam != GetClientTeam(j))
 				continue;
 
 			// Get the position of the other player
@@ -346,7 +347,7 @@ public void OnGameFrame()
 			GetClientAbsOrigin(j, fVec2);
 
 			float fDistance = GetVectorDistance(fVec1, fVec2, false);
-			if(fDistance <= g_fMaxDistance)
+			if(fDistance <= g_fMaxDistance && g_fMaxDistance > 0.0)
 			{
 				PlayersInRange++;
 
