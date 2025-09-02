@@ -244,11 +244,11 @@ public MRESReturn AcceptInput(int pThis, Handle hReturn, Handle hParams)
 	}
 	else if(StrEqual(szInputName, "alpha", false))
 	{
-		char sValue[128];
-		DHookGetParamObjectPtrString(hParams, 4, 0, ObjectValueType_String, sValue, sizeof(sValue));
+		char sAlphaValue[128];
+		DHookGetParamObjectPtrString(hParams, 4, 0, ObjectValueType_String, sAlphaValue, sizeof(sAlphaValue));
 
 		// Convert string to integer and mask to ensure alpha value is between 0-255
-		int iAlpha = StringToInt(sValue) & 0xFF;
+		int iAlpha = StringToInt(sAlphaValue) & 0xFF;
 		if(iAlpha == 0)
 		{
 			ToolsSetEntityAlpha(client, 255);
