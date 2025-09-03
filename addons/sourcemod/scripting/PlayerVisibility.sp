@@ -168,7 +168,8 @@ public void OnClientDisconnect(int client)
 // bool CBaseEntity::AcceptInput( const char *szInputName, CBaseEntity *pActivator, CBaseEntity *pCaller, variant_t Value, int outputID )
 public MRESReturn AcceptInput(int pThis, Handle hReturn, Handle hParams)
 {
-	if(DHookIsNullParam(hParams, 1) || DHookIsNullParam(hParams, 2) || DHookIsNullParam(hParams, 4))
+	// Should not happen?
+	if (DHookIsNullParam(hParams, 2))
 		return MRES_Ignored;
 
 	int client = EntRefToEntIndex(DHookGetParam(hParams, 2));
@@ -340,7 +341,15 @@ public void OnGameFrame()
 
 			// Skip if target is not in the same team based on the cvar
 			if (!g_bApplyToOppositeTeam && iTeam != GetClientTeam(j))
+			{
+				// Reset alpha to full visibility for security when skipping opposite team players
+				if (g_playerData[j].alpha != 255)
+				{
+					g_playerData[j].alpha = 255;
+					ToolsSetEntityAlpha(j, 255);
+				}
 				continue;
+			}
 
 			// Get the position of the other player
 			static float fVec2[3];
