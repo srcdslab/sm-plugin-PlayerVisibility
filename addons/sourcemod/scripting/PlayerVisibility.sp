@@ -259,6 +259,7 @@ public MRESReturn AcceptInput(int pThis, Handle hReturn, Handle hParams)
 		else
 		{
 			g_playerData[client].enabled = true;
+			DHookSetReturn(hReturn, false);
 			return MRES_Supercede;
 		}
 	}
