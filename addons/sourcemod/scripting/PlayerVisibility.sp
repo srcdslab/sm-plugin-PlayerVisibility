@@ -27,10 +27,9 @@ ConVar g_CVar_MinFactor;
 ConVar g_CVar_MinAlpha;
 ConVar g_CVar_MinPlayers;
 ConVar g_CVar_MinPlayersToEnable;
-ConVar g_CVar_ApplyToOppositeTeam;
 
 bool g_bEnable = false;
-bool g_bApplyToOppositeTeam = false;
+
 float g_fMaxDistance;
 float g_fMinFactor;
 float g_fMinAlpha;
@@ -97,10 +96,6 @@ public void OnPluginStart()
 	g_iMinPlayersToEnable = g_CVar_MinPlayersToEnable.IntValue;
 	g_CVar_MinPlayersToEnable.AddChangeHook(OnConVarChanged);
 
-	g_CVar_ApplyToOppositeTeam = CreateConVar("sm_pvis_opposite_team", "0", "Apply visibility rules to players from opposite team. [0 = Disabled || 1 = Enabled]", 0, true, 0.0, true, 1.0);
-	g_bApplyToOppositeTeam = g_CVar_ApplyToOppositeTeam.BoolValue;
-	g_CVar_ApplyToOppositeTeam.AddChangeHook(OnConVarChanged);
-
 	AutoExecConfig(true);
 
 	HookEvent("player_spawn", Event_Spawn, EventHookMode_Post);
@@ -142,9 +137,6 @@ public void OnConVarChanged(ConVar convar, const char[] oldValue, const char[] n
 		g_iMinPlayersToEnable = g_CVar_MinPlayersToEnable.IntValue;
 		CheckClientCount();
 	}
-
-	else if (convar == g_CVar_ApplyToOppositeTeam)
-		g_bApplyToOppositeTeam = g_CVar_ApplyToOppositeTeam.BoolValue;
 }
 
 public void OnClientPutInServer(int client)
@@ -183,7 +175,7 @@ public MRESReturn AcceptInput(int pThis, Handle hReturn, Handle hParams)
 	DHookGetParamString(hParams, 1, szInputName, sizeof(szInputName));
 
 	// Handle different input types
-	if (StrEqual(szInputName, "addoutput", false))
+	if (strcmp(szInputName, "addoutput", false) == 0)
 	{
 		char sValue[128];
 		DHookGetParamObjectPtrString(hParams, 4, 0, ObjectValueType_String, sValue, sizeof(sValue));
@@ -218,7 +210,7 @@ public MRESReturn AcceptInput(int pThis, Handle hReturn, Handle hParams)
 			}
 		}
 
-		if (StrEqual(sValue[aArgs[0]], "rendermode", false))
+		if (strcmp(sValue[aArgs[0]], "rendermode", false) == 0)
 		{
 			RenderMode renderMode = view_as<RenderMode>(StringToInt(sValue[aArgs[1]]) & 0xFF);
 			if (renderMode == RENDER_ENVIRONMENTAL)
@@ -230,7 +222,7 @@ public MRESReturn AcceptInput(int pThis, Handle hReturn, Handle hParams)
 			else
 				g_playerData[client].enabled = true;
 		}
-		else if (StrEqual(sValue[aArgs[0]], "renderfx", false))
+		else if (strcmp(sValue[aArgs[0]], "renderfx", false) == 0)
 		{
 			RenderFx renderFx = view_as<RenderFx>(StringToInt(sValue[aArgs[1]]) & 0xFF);
 			if (renderFx != RENDERFX_NONE)
@@ -243,7 +235,7 @@ public MRESReturn AcceptInput(int pThis, Handle hReturn, Handle hParams)
 				g_playerData[client].enabled = true;
 		}
 	}
-	else if (StrEqual(szInputName, "alpha", false))
+	else if (strcmp(szInputName, "alpha", false) == 0)
 	{
 		char sAlphaValue[128];
 		DHookGetParamObjectPtrString(hParams, 4, 0, ObjectValueType_String, sAlphaValue, sizeof(sAlphaValue));
@@ -259,7 +251,6 @@ public MRESReturn AcceptInput(int pThis, Handle hReturn, Handle hParams)
 		else
 		{
 			g_playerData[client].enabled = true;
-			DHookSetReturn(hReturn, false);
 			return MRES_Supercede;
 		}
 	}
@@ -283,10 +274,11 @@ public Action Timer_SpawnPost(Handle timer, int client)
 
 	ToolsSetEntityAlpha(client, 255);
 	g_playerData[client].alpha = 255;
-	g_playerData[client].enabled = true;
 
 	if (ZR_IsClientZombie(client))
 		g_playerData[client].enabled = false;
+	else
+		g_playerData[client].enabled = true;
 
 	return Plugin_Stop;
 }
@@ -332,25 +324,11 @@ public void OnGameFrame()
 		static float fVec1[3];
 		GetClientAbsOrigin(client, fVec1);
 
-		int iTeam = GetClientTeam(client);
-
 		for (int j = 1; j <= MaxClients; j++)
 		{
 			// Skips invalid clients, the client itself, disabled clients, and dead clients
 			if (!IsClientInGame(j) || j == client || !g_playerData[j].enabled || !IsPlayerAlive(j))
 				continue;
-
-			// Skip if target is not in the same team based on the cvar
-			if (!g_bApplyToOppositeTeam && iTeam != GetClientTeam(j))
-			{
-				// Reset alpha to full visibility for security when skipping opposite team players
-				if (g_playerData[j].alpha != 255)
-				{
-					g_playerData[j].alpha = 255;
-					ToolsSetEntityAlpha(j, 255);
-				}
-				continue;
-			}
 
 			// Get the position of the other player
 			static float fVec2[3];
