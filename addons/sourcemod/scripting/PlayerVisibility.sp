@@ -14,7 +14,7 @@ public Plugin myinfo =
 	name 			= "PlayerVisibility",
 	author 			= "BotoX, maxime1907",
 	description 	= "Fades players away when you get close to them.",
-	version 		= "1.4.3",
+	version 		= "1.4.4",
 	url 			= ""
 };
 
@@ -27,10 +27,9 @@ ConVar g_CVar_MinFactor;
 ConVar g_CVar_MinAlpha;
 ConVar g_CVar_MinPlayers;
 ConVar g_CVar_MinPlayersToEnable;
-ConVar g_CVar_ApplyToOppositeTeam;
 
 bool g_bEnable = false;
-bool g_bApplyToOppositeTeam = false;
+
 float g_fMaxDistance;
 float g_fMinFactor;
 float g_fMinAlpha;
@@ -57,7 +56,7 @@ PlayerData g_playerData[MAXPLAYERS+1];
 public void OnPluginStart()
 {
 	Handle hGameConf = LoadGameConfigFile("sdktools.games");
-	if(hGameConf == INVALID_HANDLE)
+	if (hGameConf == INVALID_HANDLE)
 	{
 		SetFailState("Couldn't load sdktools game config!");
 		return;
@@ -96,10 +95,6 @@ public void OnPluginStart()
 	g_CVar_MinPlayersToEnable = CreateConVar("sm_pvis_minplayers_enable", "40", "Minimum players to enable this plugin. [0 = Always enable || -1 = Plugin disable", 0, true, -1.0, true, 200.0);
 	g_iMinPlayersToEnable = g_CVar_MinPlayersToEnable.IntValue;
 	g_CVar_MinPlayersToEnable.AddChangeHook(OnConVarChanged);
-
-	g_CVar_ApplyToOppositeTeam = CreateConVar("sm_pvis_opposite_team", "0", "Apply visibility rules to players from opposite team. [0 = Disabled || 1 = Enabled]", 0, true, 0.0, true, 1.0);
-	g_bApplyToOppositeTeam = g_CVar_ApplyToOppositeTeam.BoolValue;
-	g_CVar_ApplyToOppositeTeam.AddChangeHook(OnConVarChanged);
 
 	AutoExecConfig(true);
 
@@ -142,9 +137,6 @@ public void OnConVarChanged(ConVar convar, const char[] oldValue, const char[] n
 		g_iMinPlayersToEnable = g_CVar_MinPlayersToEnable.IntValue;
 		CheckClientCount();
 	}
-
-	else if (convar == g_CVar_ApplyToOppositeTeam)
-		g_bApplyToOppositeTeam = g_CVar_ApplyToOppositeTeam.BoolValue;
 }
 
 public void OnClientPutInServer(int client)
@@ -169,61 +161,59 @@ public void OnClientDisconnect(int client)
 public MRESReturn AcceptInput(int pThis, Handle hReturn, Handle hParams)
 {
 	// Should not happen?
-	if(DHookIsNullParam(hParams, 2))
+	if (DHookIsNullParam(hParams, 2))
 		return MRES_Ignored;
 
 	int client = EntRefToEntIndex(DHookGetParam(hParams, 2));
-	if(client < 1 || client > MAXPLAYERS)
+	if (client < 1 || client > MAXPLAYERS)
 		return MRES_Ignored;
 
-	if(!g_playerData[client].enabled)
+	if (!g_playerData[client].enabled)
 		return MRES_Ignored;
 
 	char szInputName[32];
 	DHookGetParamString(hParams, 1, szInputName, sizeof(szInputName));
 
-	if(!StrEqual(szInputName, "addoutput", false))
-		return MRES_Ignored;
-
-	char sValue[128];
-	DHookGetParamObjectPtrString(hParams, 4, 0, ObjectValueType_String, sValue, sizeof(sValue));
-	int iValueLen = strlen(sValue);
-
-	int aArgs[4] = {0, ...};
-	int iArgs = 0;
-	bool bFound = false;
-
-	for(int i = 0; i < iValueLen; i++)
+	// Handle different input types
+	if (strcmp(szInputName, "addoutput", false) == 0)
 	{
-		if(sValue[i] == ' ')
-		{
-			if(bFound)
-			{
-				sValue[i] = '\0';
-				bFound = false;
+		char sValue[128];
+		DHookGetParamObjectPtrString(hParams, 4, 0, ObjectValueType_String, sValue, sizeof(sValue));
+		int iValueLen = strlen(sValue);
 
-				if(iArgs > sizeof(aArgs))
-					break;
+		int aArgs[4] = {0, ...};
+		int iArgs = 0;
+		bool bFound = false;
+
+		for (int i = 0; i < iValueLen; i++)
+		{
+			if (sValue[i] == ' ')
+			{
+				if (bFound)
+				{
+					sValue[i] = '\0';
+					bFound = false;
+
+					if (iArgs >= sizeof(aArgs))
+						break;
+				}
+				continue;
 			}
-			continue;
+
+			if (!bFound)
+			{
+				if (iArgs < sizeof(aArgs))
+				{
+					aArgs[iArgs++] = i;
+					bFound = true;
+				}
+			}
 		}
 
-		if(!bFound)
-		{
-			if (iArgs < sizeof(aArgs))
-			{
-				aArgs[iArgs++] = i;
-				bFound = true;
-			}
-		}
-	}
-
-	if(StrEqual(szInputName, "addoutput", false))
-	{
-		if(StrEqual(sValue[aArgs[0]], "rendermode", false))
+		if (strcmp(sValue[aArgs[0]], "rendermode", false) == 0)
 		{
 			RenderMode renderMode = view_as<RenderMode>(StringToInt(sValue[aArgs[1]]) & 0xFF);
-			if(renderMode == RENDER_ENVIRONMENTAL)
+			if (renderMode == RENDER_ENVIRONMENTAL)
 			{
 				ToolsSetEntityAlpha(client, 255);
 				g_playerData[client].alpha = 255;
@@ -232,10 +222,10 @@ public MRESReturn AcceptInput(int pThis, Handle hReturn, Handle hParams)
 			else
 				g_playerData[client].enabled = true;
 		}
-		else if(StrEqual(sValue[aArgs[0]], "renderfx", false))
+		else if (strcmp(sValue[aArgs[0]], "renderfx", false) == 0)
 		{
 			RenderFx renderFx = view_as<RenderFx>(StringToInt(sValue[aArgs[1]]) & 0xFF);
-			if(renderFx != RENDERFX_NONE)
+			if (renderFx != RENDERFX_NONE)
 			{
 				ToolsSetEntityAlpha(client, 255);
 				g_playerData[client].alpha = 255;
@@ -245,10 +235,14 @@ public MRESReturn AcceptInput(int pThis, Handle hReturn, Handle hParams)
 				g_playerData[client].enabled = true;
 		}
 	}
-	else if(StrEqual(szInputName, "alpha", false))
+	else if (strcmp(szInputName, "alpha", false) == 0)
 	{
-		int iAlpha = StringToInt(sValue[aArgs[0]]) & 0xFF;
-		if(iAlpha == 0)
+		char sAlphaValue[128];
+		DHookGetParamObjectPtrString(hParams, 4, 0, ObjectValueType_String, sAlphaValue, sizeof(sAlphaValue));
+
+		// Convert string to integer and mask to ensure alpha value is between 0-255
+		int iAlpha = StringToInt(sAlphaValue) & 0xFF;
+		if (iAlpha == 0)
 		{
 			ToolsSetEntityAlpha(client, 255);
 			g_playerData[client].alpha = 255;
@@ -275,15 +269,16 @@ public void Event_Spawn(Event event, const char[] name, bool dontBroadcast)
 
 public Action Timer_SpawnPost(Handle timer, int client)
 {
-	if(!IsClientInGame(client) || !IsPlayerAlive(client))
+	if (!IsClientInGame(client) || !IsPlayerAlive(client))
 		return Plugin_Stop;
 
 	ToolsSetEntityAlpha(client, 255);
 	g_playerData[client].alpha = 255;
-	g_playerData[client].enabled = true;
 
 	if (ZR_IsClientZombie(client))
 		g_playerData[client].enabled = false;
+	else
+		g_playerData[client].enabled = true;
 
 	return Plugin_Stop;
 }
@@ -329,16 +324,10 @@ public void OnGameFrame()
 		static float fVec1[3];
 		GetClientAbsOrigin(client, fVec1);
 
-		int iTeam = GetClientTeam(client);
-
 		for (int j = 1; j <= MaxClients; j++)
 		{
 			// Skips invalid clients, the client itself, disabled clients, and dead clients
 			if (!IsClientInGame(j) || j == client || !g_playerData[j].enabled || !IsPlayerAlive(j))
-				continue;
-
-			// Skip if target is not in the same team based on the cvar
-			if (g_bApplyToOppositeTeam && iTeam != GetClientTeam(j))
 				continue;
 
 			// Get the position of the other player
@@ -346,27 +335,27 @@ public void OnGameFrame()
 			GetClientAbsOrigin(j, fVec2);
 
 			float fDistance = GetVectorDistance(fVec1, fVec2, false);
-			if(fDistance <= g_fMaxDistance)
+			if (fDistance <= g_fMaxDistance && g_fMaxDistance > 0.0)
 			{
 				PlayersInRange++;
 
 				float fFactor = fDistance / g_fMaxDistance;
-				if(fFactor < g_fMinFactor)
+				if (fFactor < g_fMinFactor)
 					fFactor = g_fMinFactor;
 
 				fAlpha *= fFactor;
 			}
 		}
 
-		if(fAlpha < g_fMinAlpha)
+		if (fAlpha < g_fMinAlpha)
 			fAlpha = g_fMinAlpha;
 
-		if(PlayersInRange < g_iMinPlayers)
+		if (PlayersInRange < g_iMinPlayers)
 			fAlpha = 255.0;
 
 		int Alpha = RoundToNearest(fAlpha);
 
-		if(Alpha == g_playerData[client].alpha)
+		if (Alpha == g_playerData[client].alpha)
 			continue;
 
 		g_playerData[client].alpha = Alpha;
@@ -376,7 +365,7 @@ public void OnGameFrame()
 
 stock void ToolsSetEntityAlpha(int client, int Alpha)
 {
-	if(Alpha == 255)
+	if (Alpha == 255)
 	{
 		SetEntityRenderMode(client, RENDER_NORMAL);
 		return;
@@ -394,13 +383,13 @@ stock void ToolsGetEntityColor(int entity, int aColor[4])
 	static bool s_GotConfig = false;
 	static char s_sProp[32];
 
-	if(!s_GotConfig)
+	if (!s_GotConfig)
 	{
 		Handle GameConf = LoadGameConfigFile("core.games");
 		bool Exists = GameConfGetKeyValue(GameConf, "m_clrRender", s_sProp, sizeof(s_sProp));
 		CloseHandle(GameConf);
 
-		if(!Exists)
+		if (!Exists)
 			strcopy(s_sProp, sizeof(s_sProp), "m_clrRender");
 
 		s_GotConfig = true;
@@ -408,7 +397,7 @@ stock void ToolsGetEntityColor(int entity, int aColor[4])
 
 	int Offset = GetEntSendPropOffs(entity, s_sProp);
 
-	for(int i = 0; i < 4; i++)
+	for (int i = 0; i < 4; i++)
 		aColor[i] = GetEntData(entity, Offset + i, 1) & 0xFF;
 }
 
