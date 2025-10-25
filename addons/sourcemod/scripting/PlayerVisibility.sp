@@ -14,7 +14,7 @@ public Plugin myinfo =
 	name 			= "PlayerVisibility",
 	author 			= "BotoX, maxime1907",
 	description 	= "Fades players away when you get close to them.",
-	version 		= "1.4.4",
+	version 		= "1.4.5",
 	url 			= ""
 };
 
@@ -251,6 +251,7 @@ public MRESReturn AcceptInput(int pThis, Handle hReturn, Handle hParams)
 		else
 		{
 			g_playerData[client].enabled = true;
+			DHookSetReturn(hReturn, 0);
 			return MRES_Supercede;
 		}
 	}
