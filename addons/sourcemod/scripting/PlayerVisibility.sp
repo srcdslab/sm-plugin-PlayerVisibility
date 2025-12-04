@@ -14,7 +14,7 @@ public Plugin myinfo =
 	name 			= "PlayerVisibility",
 	author 			= "BotoX, maxime1907",
 	description 	= "Fades players away when you get close to them.",
-	version 		= "1.4.5",
+	version 		= "1.4.6",
 	url 			= ""
 };
 
@@ -261,16 +261,18 @@ public MRESReturn AcceptInput(int pThis, Handle hReturn, Handle hParams)
 
 public void Event_Spawn(Event event, const char[] name, bool dontBroadcast)
 {
-	int client = GetClientOfUserId(event.GetInt("userid"));
+	int iUserID = event.GetInt("userid");
+	int client = GetClientOfUserId(iUserID);
 	if (!client)
 		return;
 
-	CreateTimer(1.0, Timer_SpawnPost, client, TIMER_FLAG_NO_MAPCHANGE);
+	CreateTimer(1.0, Timer_SpawnPost, iUserID, TIMER_FLAG_NO_MAPCHANGE);
 }
 
-public Action Timer_SpawnPost(Handle timer, int client)
+public Action Timer_SpawnPost(Handle timer, int iUserID)
 {
-	if (!IsClientInGame(client) || !IsPlayerAlive(client))
+	int client = GetClientOfUserId(iUserID);
+	if (!client || !IsClientInGame(client) || !IsPlayerAlive(client))
 		return Plugin_Stop;
 
 	ToolsSetEntityAlpha(client, 255);
