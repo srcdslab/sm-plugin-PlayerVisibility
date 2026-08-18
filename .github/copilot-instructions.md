@@ -13,23 +13,22 @@ This repository contains a SourcePawn plugin for SourceMod that implements a pla
 ## Technical Environment
 
 ### Build System
-- **Primary Tool**: SourceKnight (Python-based build system)
-- **Config File**: `sourceknight.yaml` in repository root
-- **Dependencies**: Automatically downloaded by SourceKnight
-  - SourceMod 1.11.0-git6934 (minimum version)
-  - Zombie Reloaded plugin includes
-- **Output**: Compiled `.smx` files in `/addons/sourcemod/plugins`
+- **Primary Tool**: Native GitHub Actions workflow using `rumblefrog/setup-sp` (SourcePawn compiler 1.12.x)
+- **Config File**: `.github/workflows/ci.yml` in repository root
+- **Dependencies**: Cloned directly from source in CI
+  - SourceMod 1.12.x (via setup-sp)
+  - Zombie Reloaded plugin includes (cloned from `srcdslab/sm-plugin-zombiereloaded`)
+- **Output**: Compiled `.smx` files in `addons/sourcemod/plugins`
 
 ### Build Commands
 ```bash
 # Primary method: Use GitHub Actions CI (recommended)
 # The repository is configured to build automatically via CI
 
-# Alternative: Manual SourceKnight installation (if needed locally)
-pip install sourceknight
-sourceknight build
-
-# Output will be in .sourceknight/package/addons/sourcemod/plugins/
+# Alternative: Manual local compilation (if needed)
+# Requires spcomp 1.12.x and the zombiereloaded include cloned into
+# addons/sourcemod/scripting/include, then:
+spcomp -i include -o ../plugins/PlayerVisibility.smx PlayerVisibility.sp
 
 # Note: Manual builds may require dependency setup
 # CI environment handles all dependencies automatically
@@ -49,7 +48,6 @@ sourceknight build
 │   └── copilot-instructions.md   # This file
 ├── addons/sourcemod/scripting/
 │   └── PlayerVisibility.sp       # Main plugin source
-├── sourceknight.yaml            # Build configuration
 └── .gitignore                   # Excludes build artifacts, .smx files
 ```
 
@@ -178,10 +176,7 @@ for (int i = 0; i < updateRate; i++) {
 # Push changes to trigger GitHub Actions workflow
 
 # Alternative: Local development validation
-# Method 1: Use SourceKnight (if successfully installed)
-sourceknight build
-
-# Method 2: Manual SourceMod compiler (if available)
+# Manual SourceMod compiler (if available)
 # Requires SourceMod development environment
 spcomp -o output.smx PlayerVisibility.sp
 
@@ -244,7 +239,7 @@ spcomp -o output.smx PlayerVisibility.sp
 ## Troubleshooting Common Issues
 
 ### Compilation Issues
-- **SourceKnight installation fails**: Use CI pipeline for building instead of local compilation
+- **Local compiler setup fails**: Use CI pipeline for building instead of local compilation
 - **Missing include files**: Ensure `zombiereloaded.inc` is available in include path
 - **SourceMod version mismatch**: Verify compatibility with target SourceMod version
 - **DHooks dependency**: Ensure DHooks extension is loaded on target server
@@ -263,12 +258,11 @@ spcomp -o output.smx PlayerVisibility.sp
   - Review plugin load order
 
 ### Build System Issues
-- **SourceKnight installation issues**: 
+- **Local compiler setup issues**: 
   - Use GitHub Actions CI instead of local builds
-  - Dependency conflicts may occur with newer Python versions
 - **Missing dependencies in CI**: 
-  - Check sourceknight.yaml configuration
-  - Verify dependency URLs are accessible
+  - Check `.github/workflows/ci.yml` dependency clone step
+  - Verify dependency repository URLs are accessible
   - Review GitHub Actions workflow logs
 - **CI build failures**: 
   - Check Actions tab for detailed error messages
