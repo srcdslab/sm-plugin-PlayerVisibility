@@ -14,12 +14,12 @@ public Plugin myinfo =
 	name 			= "PlayerVisibility",
 	author 			= "BotoX, maxime1907",
 	description 	= "Fades players away when you get close to them.",
-	version 		= "1.4.6",
+	version 		= "1.4.7",
 	url 			= ""
 };
 
 // bool CBaseEntity::AcceptInput( const char *szInputName, CBaseEntity *pActivator, CBaseEntity *pCaller, variant_t Value, int outputID )
-Handle g_hAcceptInput;
+DynamicHook g_hAcceptInput;
 
 ConVar g_CVar_UpdateRate;
 ConVar g_CVar_MaxDistance;
@@ -55,22 +55,22 @@ PlayerData g_playerData[MAXPLAYERS+1];
 
 public void OnPluginStart()
 {
-	Handle hGameConf = LoadGameConfigFile("sdktools.games");
-	if (hGameConf == INVALID_HANDLE)
+	GameData hGameConf = new GameData("sdktools.games");
+	if (hGameConf == null)
 	{
 		SetFailState("Couldn't load sdktools game config!");
 		return;
 	}
 
-	int Offset = GameConfGetOffset(hGameConf, "AcceptInput");
-	g_hAcceptInput = DHookCreate(Offset, HookType_Entity, ReturnType_Bool, ThisPointer_CBaseEntity, AcceptInput);
-	DHookAddParam(g_hAcceptInput, HookParamType_CharPtr);
-	DHookAddParam(g_hAcceptInput, HookParamType_CBaseEntity);
-	DHookAddParam(g_hAcceptInput, HookParamType_CBaseEntity);
-	DHookAddParam(g_hAcceptInput, HookParamType_Object, 20, DHookPass_ByVal|DHookPass_ODTOR|DHookPass_OCTOR|DHookPass_OASSIGNOP); //varaint_t is a union of 12 (float[3]) plus two int type params 12 + 8 = 20
-	DHookAddParam(g_hAcceptInput, HookParamType_Int);
+	int Offset = hGameConf.GetOffset("AcceptInput");
+	g_hAcceptInput = new DynamicHook(Offset, HookType_Entity, ReturnType_Bool, ThisPointer_CBaseEntity);
+	g_hAcceptInput.AddParam(HookParamType_CharPtr);
+	g_hAcceptInput.AddParam(HookParamType_CBaseEntity);
+	g_hAcceptInput.AddParam(HookParamType_CBaseEntity);
+	g_hAcceptInput.AddParam(HookParamType_Object, 20, DHookPass_ByVal|DHookPass_ODTOR|DHookPass_OCTOR|DHookPass_OASSIGNOP); //varaint_t is a union of 12 (float[3]) plus two int type params 12 + 8 = 20
+	g_hAcceptInput.AddParam(HookParamType_Int);
 
-	CloseHandle(hGameConf);
+	delete hGameConf;
 
 	g_CVar_UpdateRate = CreateConVar("sm_pvis_updaterate", "3", "Number of players to update per frame.", 0, true, 64.0);
 	g_iUpdateRate = g_CVar_UpdateRate.IntValue;
@@ -149,7 +149,7 @@ public void OnClientPutInServer(int client)
 	g_playerData[client].alpha = 255;
 	g_playerData[client].enabled = true;
 
-	DHookEntity(g_hAcceptInput, false, client);
+	g_hAcceptInput.HookEntity(Hook_Pre, client, AcceptInput);
 }
 
 public void OnClientDisconnect(int client)
@@ -158,13 +158,13 @@ public void OnClientDisconnect(int client)
 }
 
 // bool CBaseEntity::AcceptInput( const char *szInputName, CBaseEntity *pActivator, CBaseEntity *pCaller, variant_t Value, int outputID )
-public MRESReturn AcceptInput(int pThis, Handle hReturn, Handle hParams)
+public MRESReturn AcceptInput(int pThis, DHookReturn hReturn, DHookParam hParams)
 {
 	// Should not happen?
-	if (DHookIsNullParam(hParams, 2))
+	if (hParams.IsNull(2))
 		return MRES_Ignored;
 
-	int client = EntRefToEntIndex(DHookGetParam(hParams, 2));
+	int client = EntRefToEntIndex(hParams.Get(2));
 	if (client < 1 || client > MAXPLAYERS)
 		return MRES_Ignored;
 
@@ -172,13 +172,13 @@ public MRESReturn AcceptInput(int pThis, Handle hReturn, Handle hParams)
 		return MRES_Ignored;
 
 	char szInputName[32];
-	DHookGetParamString(hParams, 1, szInputName, sizeof(szInputName));
+	hParams.GetString(1, szInputName, sizeof(szInputName));
 
 	// Handle different input types
 	if (strcmp(szInputName, "addoutput", false) == 0)
 	{
 		char sValue[128];
-		DHookGetParamObjectPtrString(hParams, 4, 0, ObjectValueType_String, sValue, sizeof(sValue));
+		hParams.GetObjectVarString(4, 0, ObjectValueType_String, sValue, sizeof(sValue));
 		int iValueLen = strlen(sValue);
 
 		int aArgs[4] = {0, ...};
@@ -238,7 +238,7 @@ public MRESReturn AcceptInput(int pThis, Handle hReturn, Handle hParams)
 	else if (strcmp(szInputName, "alpha", false) == 0)
 	{
 		char sAlphaValue[128];
-		DHookGetParamObjectPtrString(hParams, 4, 0, ObjectValueType_String, sAlphaValue, sizeof(sAlphaValue));
+		hParams.GetObjectVarString(4, 0, ObjectValueType_String, sAlphaValue, sizeof(sAlphaValue));
 
 		// Convert string to integer and mask to ensure alpha value is between 0-255
 		int iAlpha = StringToInt(sAlphaValue) & 0xFF;
@@ -251,7 +251,7 @@ public MRESReturn AcceptInput(int pThis, Handle hReturn, Handle hParams)
 		else
 		{
 			g_playerData[client].enabled = true;
-			DHookSetReturn(hReturn, 0);
+			hReturn.Value = 0;
 			return MRES_Supercede;
 		}
 	}
@@ -388,9 +388,9 @@ stock void ToolsGetEntityColor(int entity, int aColor[4])
 
 	if (!s_GotConfig)
 	{
-		Handle GameConf = LoadGameConfigFile("core.games");
-		bool Exists = GameConfGetKeyValue(GameConf, "m_clrRender", s_sProp, sizeof(s_sProp));
-		CloseHandle(GameConf);
+		GameData GameConf = new GameData("core.games");
+		bool Exists = GameConf.GetKeyValue("m_clrRender", s_sProp, sizeof(s_sProp));
+		delete GameConf;
 
 		if (!Exists)
 			strcopy(s_sProp, sizeof(s_sProp), "m_clrRender");
