@@ -14,7 +14,7 @@ public Plugin myinfo =
 	name 			= "PlayerVisibility",
 	author 			= "BotoX, maxime1907",
 	description 	= "Fades players away when you get close to them.",
-	version 		= "1.4.7",
+	version 		= "1.4.8",
 	url 			= ""
 };
 
@@ -307,6 +307,14 @@ public void OnGameFrame()
 
 	static int client = 0;
 
+	// Alive and enabled players with their position, gathered once per frame
+	// (only if a client gets processed) instead of once per processed client
+	static int aOthers[MAXPLAYERS + 1];
+	static float aOthersPos[MAXPLAYERS + 1][3];
+	int iOthers = -1;
+
+	float fMaxDistanceSq = g_fMaxDistance * g_fMaxDistance;
+
 	// Batch process the clients to reduce server load
 	for (int i = 0; i < g_iUpdateRate; i++)
 	{
@@ -320,6 +328,22 @@ public void OnGameFrame()
 		if (g_playerData[client].bot || !g_playerData[client].enabled || !IsClientInGame(client))
 			continue;
 
+		if (iOthers == -1)
+		{
+			iOthers = 0;
+
+			for (int j = 1; j <= MaxClients; j++)
+			{
+				// Skips invalid clients, disabled clients, and dead clients
+				if (!IsClientInGame(j) || !g_playerData[j].enabled || !IsPlayerAlive(j))
+					continue;
+
+				aOthers[iOthers] = j;
+				GetClientAbsOrigin(j, aOthersPos[iOthers]);
+				iOthers++;
+			}
+		}
+
 		int PlayersInRange = 0;
 		float fAlpha = 255.0;
 
@@ -327,22 +351,22 @@ public void OnGameFrame()
 		static float fVec1[3];
 		GetClientAbsOrigin(client, fVec1);
 
-		for (int j = 1; j <= MaxClients; j++)
+		for (int j = 0; j < iOthers; j++)
 		{
-			// Skips invalid clients, the client itself, disabled clients, and dead clients
-			if (!IsClientInGame(j) || j == client || !g_playerData[j].enabled || !IsPlayerAlive(j))
+			// Skips the client itself
+			if (aOthers[j] == client)
 				continue;
 
-			// Get the position of the other player
-			static float fVec2[3];
-			GetClientAbsOrigin(j, fVec2);
+			float fDelta0 = aOthersPos[j][0] - fVec1[0];
+			float fDelta1 = aOthersPos[j][1] - fVec1[1];
+			float fDelta2 = aOthersPos[j][2] - fVec1[2];
+			float fDistanceSq = fDelta0 * fDelta0 + fDelta1 * fDelta1 + fDelta2 * fDelta2;
 
-			float fDistance = GetVectorDistance(fVec1, fVec2, false);
-			if (fDistance <= g_fMaxDistance && g_fMaxDistance > 0.0)
+			if (fDistanceSq <= fMaxDistanceSq && g_fMaxDistance > 0.0)
 			{
 				PlayersInRange++;
 
-				float fFactor = fDistance / g_fMaxDistance;
+				float fFactor = SquareRoot(fDistanceSq) / g_fMaxDistance;
 				if (fFactor < g_fMinFactor)
 					fFactor = g_fMinFactor;
 
