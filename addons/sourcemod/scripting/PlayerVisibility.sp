@@ -72,7 +72,7 @@ public void OnPluginStart()
 
 	delete hGameConf;
 
-	g_CVar_UpdateRate = CreateConVar("sm_pvis_updaterate", "3", "Number of players to update per frame.", 0, true, 64.0);
+	g_CVar_UpdateRate = CreateConVar("sm_pvis_updaterate", "3", "Number of players to update per frame.", 0, true, 1.0, true, 64.0);
 	g_iUpdateRate = g_CVar_UpdateRate.IntValue;
 	g_CVar_UpdateRate.AddChangeHook(OnConVarChanged);
 
