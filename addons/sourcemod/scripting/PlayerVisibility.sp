@@ -14,7 +14,7 @@ public Plugin myinfo =
 	name 			= "PlayerVisibility",
 	author 			= "BotoX, maxime1907",
 	description 	= "Fades players away when you get close to them.",
-	version 		= "1.4.8",
+	version 		= "1.4.9",
 	url 			= ""
 };
 
