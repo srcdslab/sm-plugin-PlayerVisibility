@@ -14,12 +14,19 @@ public Plugin myinfo =
 	name 			= "PlayerVisibility",
 	author 			= "BotoX, maxime1907",
 	description 	= "Fades players away when you get close to them.",
-	version 		= "1.4.9",
+	version 		= "1.4.10",
 	url 			= ""
 };
 
 // bool CBaseEntity::AcceptInput( const char *szInputName, CBaseEntity *pActivator, CBaseEntity *pCaller, variant_t Value, int outputID )
 DynamicHook g_hAcceptInput;
+
+// variant_t field types (fieldtype_t)
+#define VARIANT_FIELD_STRING    2
+#define VARIANT_FIELD_INTEGER   5
+
+// Offset of variant_t::fieldType, from gamedata: 16 on x86, 20 on x86_64
+int g_iVariantTypeOffset = -1;
 
 ConVar g_CVar_UpdateRate;
 ConVar g_CVar_MaxDistance;
@@ -71,6 +78,22 @@ public void OnPluginStart()
 	g_hAcceptInput.AddParam(HookParamType_Int);
 
 	delete hGameConf;
+
+	GameData hVariantConf = new GameData("PlayerVisibility.games");
+	if (hVariantConf == null)
+	{
+		SetFailState("Couldn't load PlayerVisibility game config!");
+		return;
+	}
+
+	g_iVariantTypeOffset = hVariantConf.GetOffset("variant_t::fieldType");
+	delete hVariantConf;
+
+	if (g_iVariantTypeOffset == -1)
+	{
+		SetFailState("Failed to get variant_t::fieldType offset from gamedata");
+		return;
+	}
 
 	g_CVar_UpdateRate = CreateConVar("sm_pvis_updaterate", "3", "Number of players to update per frame.", 0, true, 1.0, true, 64.0);
 	g_iUpdateRate = g_CVar_UpdateRate.IntValue;
@@ -178,7 +201,7 @@ public MRESReturn AcceptInput(int pThis, DHookReturn hReturn, DHookParam hParams
 	if (strcmp(szInputName, "addoutput", false) == 0)
 	{
 		char sValue[128];
-		hParams.GetObjectVarString(4, 0, ObjectValueType_String, sValue, sizeof(sValue));
+		GetVariantString(hParams, 4, sValue, sizeof(sValue));
 		int iValueLen = strlen(sValue);
 
 		int aArgs[4] = {0, ...};
@@ -237,11 +260,20 @@ public MRESReturn AcceptInput(int pThis, DHookReturn hReturn, DHookParam hParams
 	}
 	else if (strcmp(szInputName, "alpha", false) == 0)
 	{
-		char sAlphaValue[128];
-		hParams.GetObjectVarString(4, 0, ObjectValueType_String, sAlphaValue, sizeof(sAlphaValue));
+		int iAlpha;
+		if (hParams.GetObjectVar(4, g_iVariantTypeOffset, ObjectValueType_Int) == VARIANT_FIELD_INTEGER)
+		{
+			// SetVariantInt + AcceptEntityInput from a plugin
+			iAlpha = hParams.GetObjectVar(4, 0, ObjectValueType_Int) & 0xFF;
+		}
+		else
+		{
+			char sAlphaValue[128];
+			GetVariantString(hParams, 4, sAlphaValue, sizeof(sAlphaValue));
 
-		// Convert string to integer and mask to ensure alpha value is between 0-255
-		int iAlpha = StringToInt(sAlphaValue) & 0xFF;
+			// Convert string to integer and mask to ensure alpha value is between 0-255
+			iAlpha = StringToInt(sAlphaValue) & 0xFF;
+		}
 		if (iAlpha == 0)
 		{
 			ToolsSetEntityAlpha(client, 255);
@@ -403,6 +435,19 @@ stock void ToolsSetEntityAlpha(int client, int Alpha)
 
 	SetEntityRenderMode(client, RENDER_TRANSCOLOR);
 	SetEntityRenderColor(client, aColor[0], aColor[1], aColor[2], Alpha);
+}
+
+// Reads the variant_t parameter of AcceptInput as a string. Any other value type gives an empty
+// string: on x86_64 string_t is 8 bytes but int/float values only fill 4, so reading them as a
+// string can follow a garbage pointer.
+bool GetVariantString(DHookParam hParams, int iParam, char[] sBuffer, int iMaxLen)
+{
+	sBuffer[0] = '\0';
+	if (hParams.GetObjectVar(iParam, g_iVariantTypeOffset, ObjectValueType_Int) != VARIANT_FIELD_STRING)
+		return false;
+
+	hParams.GetObjectVarString(iParam, 0, ObjectValueType_String, sBuffer, iMaxLen);
+	return true;
 }
 
 stock void ToolsGetEntityColor(int entity, int aColor[4])
